@@ -3,6 +3,6 @@ from fastapi import APIRouter
 
 router = APIRouter()
 
-router.post('/login')
+router.post('/admin')
 def login():
     return 'login'
