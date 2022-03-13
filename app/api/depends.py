@@ -1,37 +1,61 @@
-from fastapi import Depends, FastAPI
+from typing import Generator
+
+from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from pydantic import BaseModel
-from typing import Optional
+from jose import jwt
+from pydantic import ValidationError
+from sqlalchemy.orm import Session
 
-app = FastAPI()
+from app import crud, models, schemas
+from app.core import security
+from app.core.config import settings
+from app.db.database import SessionLocal
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
-
-
-class User(BaseModel):
-    username: str
-    email: Optional[str] = None
-    full_name: Optional[str] = None
-    disabled: Optional[bool] = None
-
+reusable_oauth2 = OAuth2PasswordBearer(
+    tokenUrl=f"{settings.API_V1_STR}/login/access-token"
+)
 
 
-def fake_decode_token(token):
-    return User(
-        username=token + "fakedecoded", email="john@example.com", full_name="John Doe"
-    )
+def get_db() -> Generator:
+    try:
+        db = SessionLocal()
+        yield db
+    finally:
+        db.close()
 
 
-async def get_current_user(token: str = Depends(oauth2_scheme)):
-    user = fake_decode_token(token)
+def get_current_user(
+    db: Session = Depends(get_db), token: str = Depends(reusable_oauth2)
+) -> models.User:
+    try:
+        payload = jwt.decode(
+            token, settings.SECRET_KEY, algorithms=[security.ALGORITHM]
+        )
+        token_data = schemas.TokenPayload(**payload)
+    except (jwt.JWTError, ValidationError):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Could not validate credentials",
+        )
+    user = crud.user.get(db, id=token_data.sub)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
     return user
 
 
-@app.get("/items/")
-async def read_items(token: str = Depends(oauth2_scheme)):
-    return {"token": token}
+def get_current_active_user(
+    current_user: models.User = Depends(get_current_user),
+) -> models.User:
+    if not crud.user.is_active(current_user):
+        raise HTTPException(status_code=400, detail="Inactive user")
+    return current_user
 
 
-@app.get("/users/me")
-async def read_users_me(current_user: User = Depends(get_current_user)):
+def get_current_active_superuser(
+    current_user: models.User = Depends(get_current_user),
+) -> models.User:
+    if not crud.user.is_superuser(current_user):
+        raise HTTPException(
+            status_code=400, detail="The user doesn't have enough privileges"
+        )
     return current_user

@@ -1,23 +1,25 @@
+from datetime import datetime
 from pydantic import BaseModel
 
 
 class TechInfo(BaseModel):
+   pass
+
+
+class TechCreate(BaseModel):
+    password: str
+    is_superuser: bool
+    email: str
     name: str
     title: str
-    jobs_assigned: int
     jobs_responded: int
-    assigned_by: str
+
+    class Config:
+        orm_mode = True
 
 
-class TechAdminInfo(BaseModel):
-    name: str
-    title: str
-    jobs_assigned: int
-    jobs_responded: int
-    assigned_by: str
+class TechUpdate(BaseModel):
+    is_superuser: bool
 
-
-
-class TechAdmin(BaseModel):
-    tech_id: int
-    title: str
+    class Config:
+        orm_mode = True
